@@ -3,17 +3,14 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Linq;
-
 using GameNetcodeStuff;
 using UnityEngine;
 using Unity.Netcode;
 using static Unity.Netcode.CustomMessagingManager;
-
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
-
 using BetterTeleporter.Patches;
 using BetterTeleporter.Config;
 
@@ -21,6 +18,7 @@ using BetterTeleporter.Config;
 namespace BetterTeleporter
 {
     [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
+    [BepInDependency("evaisa.lethalthings")]
     public class Plugin : BaseUnityPlugin
     {
         private readonly Harmony harmony = new Harmony(PluginInfo.PLUGIN_GUID);
@@ -39,18 +37,22 @@ namespace BetterTeleporter
         }
     }
 }
+
 namespace BetterTeleporter.Patches
 {
     [HarmonyPatch(typeof(ShipTeleporter))]
     public class ShipTeleporterPatch
     {
-        private static readonly CodeMatch[] inverseTeleporterPatchIlMatch = new CodeMatch[] {
+        private static readonly CodeMatch[] inverseTeleporterPatchIlMatch = new CodeMatch[]
+        {
             new CodeMatch(i => i.IsLdloc()),
             new CodeMatch(i => i.LoadsConstant(1)),
             new CodeMatch(i => i.LoadsConstant(0)),
             new CodeMatch(i => i.Calls(originalMethodInfo))
         };
-        private static readonly CodeMatch[] teleporterPatchIlMatch = new CodeMatch[] {
+
+        private static readonly CodeMatch[] teleporterPatchIlMatch = new CodeMatch[]
+        {
             new CodeMatch(i => i.IsLdarg(0)),
             new CodeMatch(i => i.opcode == OpCodes.Ldfld),
             new CodeMatch(i => i.LoadsConstant(1)),
@@ -58,11 +60,15 @@ namespace BetterTeleporter.Patches
             new CodeMatch(i => i.Calls(originalMethodInfo))
         };
 
-        private static readonly MethodInfo originalMethodInfo = typeof(PlayerControllerB).GetMethod("DropAllHeldItems", BindingFlags.Instance | BindingFlags.Public);
-        private static readonly MethodInfo replaceMethodInfo = typeof(ShipTeleporterPatch).GetMethod("DropSomeItems", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly MethodInfo originalMethodInfo =
+            typeof(PlayerControllerB).GetMethod("DropAllHeldItems", BindingFlags.Instance | BindingFlags.Public);
+
+        private static readonly MethodInfo replaceMethodInfo =
+            typeof(ShipTeleporterPatch).GetMethod("DropSomeItems", BindingFlags.Static | BindingFlags.NonPublic);
 
         [HarmonyTranspiler, HarmonyPatch("TeleportPlayerOutWithInverseTeleporter")]
-        public static IEnumerable<CodeInstruction> InverseTeleporterDropAllButHeldItem(IEnumerable<CodeInstruction> instructions)
+        public static IEnumerable<CodeInstruction> InverseTeleporterDropAllButHeldItem(
+            IEnumerable<CodeInstruction> instructions)
         {
             CodeMatcher codeMatcher = new CodeMatcher(instructions);
 
@@ -80,7 +86,8 @@ namespace BetterTeleporter.Patches
         }
 
         [HarmonyTranspiler, HarmonyPatch("beamUpPlayer", MethodType.Enumerator)]
-        public static IEnumerable<CodeInstruction> TeleporterDropAllButHeldItem(IEnumerable<CodeInstruction> instructions)
+        public static IEnumerable<CodeInstruction> TeleporterDropAllButHeldItem(
+            IEnumerable<CodeInstruction> instructions)
         {
             CodeMatcher codeMatcher = new CodeMatcher(instructions);
 
@@ -106,10 +113,13 @@ namespace BetterTeleporter.Patches
 
         private static void DropSomeItems(PlayerControllerB player, bool inverse = false, bool itemsFall = true)
         {
-            MethodInfo methodInfo = player.GetType().GetMethod("SetSpecialGrabAnimationBool", BindingFlags.NonPublic | BindingFlags.Instance);
+            MethodInfo methodInfo = player.GetType().GetMethod("SetSpecialGrabAnimationBool",
+                BindingFlags.NonPublic | BindingFlags.Instance);
 
             var keepList = ConfigSettings.keepListItems;
             if (inverse) keepList = ConfigSettings.keepListItemsInverse;
+
+            var keepListLethalThings = ConfigSettings.keepListLethalThingsItems;
 
             float weight = 1f;
             bool twohanded = false;
@@ -119,16 +129,22 @@ namespace BetterTeleporter.Patches
                 GrabbableObject grabbableObject = player.ItemSlots[i];
                 if (grabbableObject == null) continue;
 
-                if (keepList.Contains(grabbableObject.GetType().ToString()))
+                //Für den Notfall
+                // if (grabbableObject.GetType().FullName == "LethalThings.PouchyBelt")
+
+                if (keepList.Contains(grabbableObject.GetType().ToString()) ||
+                    keepListLethalThings.Contains(grabbableObject.GetType().FullName))
                 {
                     if (grabbableObject.insertedBattery != null && ConfigSettings.doDrainItems)
                     {
-                        float new_charge = grabbableObject.insertedBattery.charge - (grabbableObject.insertedBattery.charge * ConfigSettings.drainItemsPercent);
+                        float new_charge = grabbableObject.insertedBattery.charge -
+                                           (grabbableObject.insertedBattery.charge * ConfigSettings.drainItemsPercent);
                         if (new_charge < 0) new_charge = 0;
 
                         grabbableObject.insertedBattery = new Battery(isEmpty: (new_charge != 0f), new_charge);
                         grabbableObject.SyncBatteryServerRpc((int)(new_charge * 100f));
                     }
+
                     weight += Mathf.Clamp(grabbableObject.itemProperties.weight - 1f, 0f, 10f);
                     continue;
                 }
@@ -139,11 +155,13 @@ namespace BetterTeleporter.Patches
                     grabbableObject.heldByPlayerOnServer = false;
                     if (player.isInElevator)
                     {
-                        grabbableObject.transform.SetParent(player.playersManager.elevatorTransform, worldPositionStays: true);
+                        grabbableObject.transform.SetParent(player.playersManager.elevatorTransform,
+                            worldPositionStays: true);
                     }
                     else
                     {
-                        grabbableObject.transform.SetParent(player.playersManager.propsContainer, worldPositionStays: true);
+                        grabbableObject.transform.SetParent(player.playersManager.propsContainer,
+                            worldPositionStays: true);
                     }
 
                     player.SetItemInElevator(player.isInHangarShipRoom, player.isInElevator, grabbableObject);
@@ -152,7 +170,8 @@ namespace BetterTeleporter.Patches
                     grabbableObject.transform.localScale = grabbableObject.originalScale;
                     grabbableObject.isHeld = false;
                     grabbableObject.isPocketed = false;
-                    grabbableObject.startFallingPosition = grabbableObject.transform.parent.InverseTransformPoint(grabbableObject.transform.position);
+                    grabbableObject.startFallingPosition =
+                        grabbableObject.transform.parent.InverseTransformPoint(grabbableObject.transform.position);
                     grabbableObject.FallToGround(randomizePosition: true);
                     grabbableObject.fallTime = UnityEngine.Random.Range(-0.3f, 0.05f);
                     if (player.IsOwner)
@@ -199,7 +218,8 @@ namespace BetterTeleporter.Patches
     [HarmonyPatch(typeof(StartOfRound))]
     internal class StartOfRoundPatch
     {
-        private static readonly FieldInfo cooldownProp = typeof(ShipTeleporter).GetField("cooldownTime", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo cooldownProp =
+            typeof(ShipTeleporter).GetField("cooldownTime", BindingFlags.Instance | BindingFlags.NonPublic);
 
         [HarmonyPatch("StartGame"), HarmonyPostfix]
         private static void StartGame()
@@ -229,6 +249,7 @@ namespace BetterTeleporter.Patches
         }
     }
 }
+
 namespace BetterTeleporter.Config
 {
     public static class ConfigSettings
@@ -238,6 +259,7 @@ namespace BetterTeleporter.Config
         public static bool cooldownEnd;
         public static string[] keepListItems;
         public static string[] keepListItemsInverse;
+        public static string[] keepListLethalThingsItems;
         public static bool doDrainItems;
         public static float drainItemsPercent;
 
@@ -246,24 +268,38 @@ namespace BetterTeleporter.Config
         public static ConfigEntry<bool> cooldownEndDay;
         public static ConfigEntry<string> keepList;
         public static ConfigEntry<string> keepListInverse;
+        public static ConfigEntry<string> keepListLethalThings;
         public static ConfigEntry<bool> doDrain;
         public static ConfigEntry<float> drainPercent;
 
         public static void Bind()
         {
-            cooldown = ((BaseUnityPlugin)Plugin.instance).Config.Bind<int>("General", "Cooldown", 10, "Number of seconds between teleporter uses");
-            cooldownInverse = ((BaseUnityPlugin)Plugin.instance).Config.Bind<int>("General", "CooldownInverse", 210, "Number of seconds between teleporter uses");
-            cooldownEndDay = ((BaseUnityPlugin)Plugin.instance).Config.Bind<bool>("General", "CooldownEndsOnNewDay", true, "true/false if cooldown should end on new day");
-            keepList = ((BaseUnityPlugin)Plugin.instance).Config.Bind<string>("General", "KeepItemList", "KeyItem,FlashlightItem,WalkieTalkie", "Comma-seperated list of items to be kept when teleported");
-            keepListInverse = ((BaseUnityPlugin)Plugin.instance).Config.Bind<string>("General", "KeepItemListInverse", "KeyItem,FlashlightItem,WalkieTalkie,RadarBoosterItem", "Comma-seperated list of items to be kept when teleported with inverse teleporter");
-            doDrain = ((BaseUnityPlugin)Plugin.instance).Config.Bind<bool>("General", "DrainItem", true, "true/false if items should drain battery charge");
-            drainPercent = ((BaseUnityPlugin)Plugin.instance).Config.Bind<float>("General", "DrainPercent", 0.5f, "The percentage (as float 0 to 1) of total charge that battery items lose when teleporting");
+            cooldown = ((BaseUnityPlugin)Plugin.instance).Config.Bind<int>("General", "Cooldown", 10,
+                "Number of seconds between teleporter uses");
+            cooldownInverse = ((BaseUnityPlugin)Plugin.instance).Config.Bind<int>("General", "CooldownInverse", 210,
+                "Number of seconds between teleporter uses");
+            cooldownEndDay = ((BaseUnityPlugin)Plugin.instance).Config.Bind<bool>("General", "CooldownEndsOnNewDay",
+                true, "true/false if cooldown should end on new day");
+            keepList = ((BaseUnityPlugin)Plugin.instance).Config.Bind<string>("General", "KeepItemList",
+                "KeyItem,FlashlightItem,WalkieTalkie", "Comma-seperated list of items to be kept when teleported");
+            keepListInverse = ((BaseUnityPlugin)Plugin.instance).Config.Bind<string>("General", "KeepItemListInverse",
+                "KeyItem,FlashlightItem,WalkieTalkie,RadarBoosterItem",
+                "Comma-seperated list of items to be kept when teleported with inverse teleporter");
+            keepListLethalThings = ((BaseUnityPlugin)Plugin.instance).Config.Bind<string>("General",
+                "KeepItemListLethalThings",
+                "PouchyBelt",
+                "Comma-seperated list of items to be kept when teleported with inverse and normal teleporter, but with LethalThings Items");
+            doDrain = ((BaseUnityPlugin)Plugin.instance).Config.Bind<bool>("General", "DrainItem", true,
+                "true/false if items should drain battery charge");
+            drainPercent = ((BaseUnityPlugin)Plugin.instance).Config.Bind<float>("General", "DrainPercent", 0.5f,
+                "The percentage (as float 0 to 1) of total charge that battery items lose when teleporting");
 
             cooldownAmmount = cooldown.Value;
             cooldownAmmountInverse = cooldownInverse.Value;
             cooldownEnd = cooldownEndDay.Value;
             SetKeepList(keepList.Value, false);
             SetKeepList(keepListInverse.Value, true);
+            SetKeepListLethalThings(keepListLethalThings.Value);
             doDrainItems = doDrain.Value;
             drainItemsPercent = drainPercent.Value;
         }
@@ -287,6 +323,16 @@ namespace BetterTeleporter.Config
                 }
             }
         }
+
+        public static void SetKeepListLethalThings(string list)
+        {
+            keepListLethalThingsItems = list.Split(',');
+            for (int i = 0; i < keepListLethalThingsItems.Length; i++)
+            {
+                keepListLethalThingsItems[i] = keepListLethalThingsItems[i].Trim();
+                keepListLethalThingsItems[i] = "LethalThings." + keepListLethalThingsItems[i];
+            }
+        }
     }
 
     [HarmonyPatch(typeof(PlayerControllerB))]
@@ -297,13 +343,19 @@ namespace BetterTeleporter.Config
         {
             if (NetworkManager.Singleton.IsServer)
             {
-                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler("BetterTeleporterConfigSync", new HandleNamedMessageDelegate(OnReceiveConfigSyncRequest));
+                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler(
+                    "BetterTeleporterConfigSync", new HandleNamedMessageDelegate(OnReceiveConfigSyncRequest));
             }
             else
             {
-                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler("BetterTeleporterReceiveConfigSync", new HandleNamedMessageDelegate(OnReceiveConfigSync));
-                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler("BetterTeleporterReceiveConfigSync_KeepList", new HandleNamedMessageDelegate(OnReceiveConfigSync_KeepList));
-                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler("BetterTeleporterReceiveConfigSync_KeepListInverse", new HandleNamedMessageDelegate(OnReceiveConfigSync_KeepListInverse));
+                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler(
+                    "BetterTeleporterReceiveConfigSync", new HandleNamedMessageDelegate(OnReceiveConfigSync));
+                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler(
+                    "BetterTeleporterReceiveConfigSync_KeepList",
+                    new HandleNamedMessageDelegate(OnReceiveConfigSync_KeepList));
+                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler(
+                    "BetterTeleporterReceiveConfigSync_KeepListInverse",
+                    new HandleNamedMessageDelegate(OnReceiveConfigSync_KeepListInverse));
                 RequestConfigSync();
             }
         }
@@ -314,7 +366,8 @@ namespace BetterTeleporter.Config
             {
                 Plugin.log.LogInfo("Sending config sync request to server.");
                 FastBufferWriter val = new FastBufferWriter(16, Unity.Collections.Allocator.Temp, -1);
-                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage("BetterTeleporterConfigSync", 0ul, val, NetworkDelivery.ReliableSequenced);
+                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage("BetterTeleporterConfigSync", 0ul, val,
+                    NetworkDelivery.ReliableSequenced);
             }
             else
             {
@@ -326,22 +379,30 @@ namespace BetterTeleporter.Config
         {
             if (NetworkManager.Singleton.IsServer)
             {
-                Plugin.log.LogInfo("Receiving sync request from client with id: " + clientId + ". Sending config sync to client.");
-                FastBufferWriter val = new FastBufferWriter((sizeof(int) * 2) + (sizeof(bool) * 2) + sizeof(float), Unity.Collections.Allocator.Temp, -1);
+                Plugin.log.LogInfo("Receiving sync request from client with id: " + clientId +
+                                   ". Sending config sync to client.");
+                FastBufferWriter val = new FastBufferWriter((sizeof(int) * 2) + (sizeof(bool) * 2) + sizeof(float),
+                    Unity.Collections.Allocator.Temp, -1);
                 val.WriteValueSafe<int>(ConfigSettings.cooldown.Value, default(FastBufferWriter.ForPrimitives));
                 val.WriteValueSafe<int>(ConfigSettings.cooldownInverse.Value, default(FastBufferWriter.ForPrimitives));
                 val.WriteValueSafe<bool>(ConfigSettings.cooldownEndDay.Value, default(FastBufferWriter.ForPrimitives));
                 val.WriteValueSafe<bool>(ConfigSettings.doDrain.Value, default(FastBufferWriter.ForPrimitives));
                 val.WriteValueSafe<float>(ConfigSettings.drainPercent.Value, default(FastBufferWriter.ForPrimitives));
-                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage("BetterTeleporterReceiveConfigSync", clientId, val, NetworkDelivery.ReliableSequenced);
+                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage("BetterTeleporterReceiveConfigSync",
+                    clientId, val, NetworkDelivery.ReliableSequenced);
 
-                FastBufferWriter val2 = new FastBufferWriter((ConfigSettings.keepList.Value.Length) * sizeof(char), Unity.Collections.Allocator.Temp, -1);
+                FastBufferWriter val2 = new FastBufferWriter((ConfigSettings.keepList.Value.Length) * sizeof(char),
+                    Unity.Collections.Allocator.Temp, -1);
                 val2.WriteValueSafe(ConfigSettings.keepList.Value, true);
-                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage("BetterTeleporterReceiveConfigSync_KeepList", clientId, val2, NetworkDelivery.ReliableSequenced);
+                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(
+                    "BetterTeleporterReceiveConfigSync_KeepList", clientId, val2, NetworkDelivery.ReliableSequenced);
 
-                FastBufferWriter val3 = new FastBufferWriter((ConfigSettings.keepListInverse.Value.Length) * sizeof(char), Unity.Collections.Allocator.Temp, -1);
+                FastBufferWriter val3 = new FastBufferWriter(
+                    (ConfigSettings.keepListInverse.Value.Length) * sizeof(char), Unity.Collections.Allocator.Temp, -1);
                 val3.WriteValueSafe(ConfigSettings.keepListInverse.Value, true);
-                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage("BetterTeleporterReceiveConfigSync_KeepListInverse", clientId, val3, NetworkDelivery.ReliableSequenced);
+                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(
+                    "BetterTeleporterReceiveConfigSync_KeepListInverse", clientId, val3,
+                    NetworkDelivery.ReliableSequenced);
             }
         }
 

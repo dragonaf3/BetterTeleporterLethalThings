@@ -397,3 +397,7 @@ global.json
 
 # JetBrains Rider
 *.sln.iml
+/.idea/.idea.BetterTeleporter/.idea/vcs.xml
+/.idea/.idea.BetterTeleporter/.idea/indexLayout.xml
+/.idea/.idea.BetterTeleporter/.idea/encodings.xml
+/modPackaging/
