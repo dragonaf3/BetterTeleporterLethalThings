@@ -356,6 +356,10 @@ namespace BetterTeleporter.Config
                 NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler(
                     "BetterTeleporterReceiveConfigSync_KeepListInverse",
                     new HandleNamedMessageDelegate(OnReceiveConfigSync_KeepListInverse));
+                NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler(
+                    "BetterTeleporterReceiveConfigSync_KeepListLethalThings",
+                    new HandleNamedMessageDelegate(OnReceiveConfigSync_KeepListLethalThings));
+                
                 RequestConfigSync();
             }
         }
@@ -402,6 +406,13 @@ namespace BetterTeleporter.Config
                 val3.WriteValueSafe(ConfigSettings.keepListInverse.Value, true);
                 NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(
                     "BetterTeleporterReceiveConfigSync_KeepListInverse", clientId, val3,
+                    NetworkDelivery.ReliableSequenced);
+                
+                FastBufferWriter val4 = new FastBufferWriter(
+                    (ConfigSettings.keepListLethalThings.Value.Length) * sizeof(char), Unity.Collections.Allocator.Temp, -1);
+                val4.WriteValueSafe(ConfigSettings.keepListLethalThings.Value, true);
+                NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(
+                    "BetterTeleporterReceiveConfigSync_KeepListLethalThings", clientId, val4,
                     NetworkDelivery.ReliableSequenced);
             }
         }
@@ -463,6 +474,22 @@ namespace BetterTeleporter.Config
             else
             {
                 Plugin.log.LogWarning("Error receiving keepListInverse config sync from server.");
+            }
+        }
+        
+        public static void OnReceiveConfigSync_KeepListLethalThings(ulong clientId, FastBufferReader reader)
+        {
+            if (((FastBufferReader)reader).TryBeginRead(4))
+            {
+                Plugin.log.LogInfo("Receiving sync from server.");
+
+                ((FastBufferReader)reader).ReadValueSafe(out string list, true);
+                ConfigSettings.SetKeepListLethalThings(list);
+                Plugin.log.LogInfo($"Recieved 'keepListLethalThings = {list}");
+            }
+            else
+            {
+                Plugin.log.LogWarning("Error receiving keepListLethalThings config sync from server.");
             }
         }
     }
